@@ -24,6 +24,7 @@
   },
   "variables": {
     "subscriptionId": "[subscription().subscriptionId]",
+    "templateVersion": "1.0.0",
     "accountResourceGroupName": "[concat('sky-', parameters('organizationId'))]",
     "accountResourceGroupLocation": "eastus",
     "allowedRoleDefinitionNames": [
@@ -393,6 +394,63 @@
         "description": "testing conditions role",
         "condition": "[concat('((!(ActionMatches{''Microsoft.Authorization/roleAssignments/write''})) OR (@Request[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals {', guid(concat('mdbcloud-', parameters('organizationId'), '-delegation-role'), subscription().id), ', ', guid(concat('mdbcloud-', parameters('organizationId'), '-mc-role'), subscription().id), ', ', variables('builtInRoleIds').NetworkContributor, ', ', variables('builtInRoleIds').DiskSnapshotContributor, '}))')]",
         "conditionVersion": "2.0"
+      }
+    },
+    {
+      "comments": "Records the deployment metadata as tags on the account resource group. Created after every other resource, so the tags are only present on a complete deployment.",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2021-04-01",
+      "name": "byoaMetadataDeployment",
+      "resourceGroup": "[variables('accountResourceGroupName')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/resourceGroups', variables('accountResourceGroupName'))]",
+        "regionResourceGroupCopy",
+        "[extensionResourceId(resourceId('Microsoft.Resources/resourceGroups', variables('accountResourceGroupName')), 'Microsoft.Resources/deployments', 'accountRoleDefinitionDeployment')]",
+        "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', guid(concat('mdbcloud-', parameters('organizationId'), '-delegation-role'), subscription().id))]",
+        "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', guid(concat('mdbcloud-', parameters('organizationId'), '-mc-role'), subscription().id))]",
+        "regionRoleDefinitionCopy",
+        "[subscriptionResourceId('Microsoft.Authorization/roleAssignments', guid(concat('mdbcloud-', parameters('organizationId'), '-delegation-role-assignment'), subscription().id, parameters('servicePrincipalObjectId')))]"
+      ],
+      "properties": {
+        "mode": "Incremental",
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "parameters": {
+            "tags": {
+              "type": "object"
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Resources/tags",
+              "apiVersion": "2021-04-01",
+              "name": "default",
+              "properties": {
+                "tags": "[parameters('tags')]"
+              }
+            }
+          ]
+        },
+        "parameters": {
+          "tags": {
+            "value": {
+              "platform": "skysql",
+              "skysql_template_version": "[variables('templateVersion')]",
+              "skysql_deployment_method": "arm",
+              "skysql_org_id": "[parameters('organizationId')]",
+              "skysql_orchestration_account_id": "",
+              "skysql_account_id": "[concat(subscription().tenantId, ':', subscription().subscriptionId)]",
+              "skysql_region": "[variables('accountResourceGroupLocation')]",
+              "skysql_orchestration_role_arn": "[parameters('servicePrincipalObjectId')]",
+              "skysql_stack_id": "[subscriptionResourceId('Microsoft.Resources/deployments', deployment().name)]",
+              "skysql_regions": "[take(join(parameters('regions'), ','), 256)]"
+            }
+          }
+        }
       }
     }
   ],

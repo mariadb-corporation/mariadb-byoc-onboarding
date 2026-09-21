@@ -1,0 +1,419 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2018-05-01/subscriptionDeploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "regions": {
+      "type": "array",
+      "defaultValue": ["eastus"],
+      "metadata": {
+        "description": "List of regions for which to create resources"
+      }
+    },
+    "organizationId": {
+      "type": "string",
+      "metadata": {
+        "description": "The ID of the organization"
+      }
+    },
+    "servicePrincipalObjectId": {
+      "type": "string",
+      "metadata": {
+        "description": "The object ID of the Azure AD service principal (must be created beforehand)"
+      }
+    }
+  },
+  "variables": {
+    "subscriptionId": "[subscription().subscriptionId]",
+    "accountResourceGroupName": "[concat('sky-', parameters('organizationId'))]",
+    "accountResourceGroupLocation": "eastus",
+    "allowedRoleDefinitionNames": [
+      "Network Contributor",
+      "DNS Zone Contributor",
+      "Disk Snapshot Contributor"
+    ],
+    "builtInRoleIds": {
+      "NetworkContributor": "4d97b98b-1d4f-4787-a291-c67834d212e7",
+      "DiskSnapshotContributor": "7efff54f-a5b4-42b5-a1c5-5411624893ce"
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Resources/resourceGroups",
+      "apiVersion": "2021-04-01",
+      "name": "[variables('accountResourceGroupName')]",
+      "location": "[variables('accountResourceGroupLocation')]",
+      "properties": {}
+    },
+    {
+      "type": "Microsoft.Resources/resourceGroups",
+      "apiVersion": "2021-04-01",
+      "name": "[concat('cl-', parameters('organizationId'), '-azure-', parameters('regions')[copyIndex()])]",
+      "location": "[parameters('regions')[copyIndex()]]",
+      "copy": {
+        "name": "regionResourceGroupCopy",
+        "count": "[length(parameters('regions'))]"
+      },
+      "properties": {}
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2021-04-01",
+      "name": "accountRoleDefinitionDeployment",
+      "resourceGroup": "[variables('accountResourceGroupName')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/resourceGroups', variables('accountResourceGroupName'))]"
+      ],
+      "properties": {
+        "mode": "Incremental",
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "parameters": {
+            "servicePrincipalObjectId": {
+              "type": "string"
+            },
+            "organizationId": {
+              "type": "string"
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Authorization/roleDefinitions",
+              "apiVersion": "2022-04-01",
+              "name": "[guid(concat('mdbcloud-', parameters('organizationId'), '-account-role'), resourceGroup().id)]",
+              "properties": {
+                "roleName": "[concat('mdbcloud-', parameters('organizationId'), '-account-role')]",
+                "description": "Manage things inside the account RG",
+                "type": "CustomRole",
+                "permissions": [
+                  {
+                    "actions": [
+                      "Microsoft.ManagedIdentity/userAssignedIdentities/assign/action",
+                      "Microsoft.ManagedIdentity/userAssignedIdentities/delete",
+                      "Microsoft.ManagedIdentity/userAssignedIdentities/listAssociatedResources/action",
+                      "Microsoft.ManagedIdentity/userAssignedIdentities/read",
+                      "Microsoft.ManagedIdentity/userAssignedIdentities/write",
+                      "Microsoft.ManagedIdentity/userAssignedIdentities/revokeTokens/action",
+                      "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials/read",
+                      "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials/write",
+                      "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials/delete"
+                    ],
+                    "notActions": [],
+                    "dataActions": [],
+                    "notDataActions": []
+                  }
+                ],
+                "assignableScopes": [
+                  "[resourceGroup().id]"
+                ]
+              }
+            },
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "name": "[guid(concat('mdbcloud-', parameters('organizationId'), '-account-role-assignment'), resourceGroup().id, parameters('servicePrincipalObjectId'))]",
+              "dependsOn": [
+                "[resourceId('Microsoft.Authorization/roleDefinitions', guid(concat('mdbcloud-', parameters('organizationId'), '-account-role'), resourceGroup().id))]"
+              ],
+              "properties": {
+                "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', guid(concat('mdbcloud-', parameters('organizationId'), '-account-role'), resourceGroup().id))]",
+                "principalId": "[parameters('servicePrincipalObjectId')]",
+                "principalType": "ServicePrincipal",
+                "description": "Manage resources inside the account RG"
+              }
+            }
+          ]
+        },
+        "parameters": {
+          "servicePrincipalObjectId": {
+            "value": "[parameters('servicePrincipalObjectId')]"
+          },
+          "organizationId": {
+            "value": "[parameters('organizationId')]"
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Authorization/roleDefinitions",
+      "apiVersion": "2022-04-01",
+      "name": "[guid(concat('mdbcloud-', parameters('organizationId'), '-delegation-role'), subscription().id)]",
+      "properties": {
+        "roleName": "[concat('mdbcloud-', parameters('organizationId'), '-delegation-role')]",
+        "description": "Manage permissions inside the managed cluster RG",
+        "type": "CustomRole",
+        "permissions": [
+          {
+            "actions": [
+              "Microsoft.Authorization/roleAssignments/read",
+              "Microsoft.Authorization/roleAssignments/write",
+              "Microsoft.Authorization/roleAssignments/delete",
+              "Microsoft.Resources/subscriptions/resourcegroups/read"
+            ],
+            "notActions": [],
+            "dataActions": [],
+            "notDataActions": []
+          }
+        ],
+        "assignableScopes": [
+          "[subscription().id]"
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Authorization/roleDefinitions",
+      "apiVersion": "2022-04-01",
+      "name": "[guid(concat('mdbcloud-', parameters('organizationId'), '-mc-role'), subscription().id)]",
+      "properties": {
+        "roleName": "[concat('mdbcloud-', parameters('organizationId'), '-mc-role')]",
+        "description": "Manage things inside the managed cluster RG",
+        "type": "CustomRole",
+        "permissions": [
+          {
+            "actions": [
+              "Microsoft.Network/publicIPAddresses/read",
+              "Microsoft.Network/publicIPAddresses/write",
+              "Microsoft.Network/publicIPAddresses/delete",
+              "Microsoft.Network/loadBalancers/read",
+              "Microsoft.Network/loadBalancers/write",
+              "Microsoft.Network/loadBalancers/delete",
+              "Microsoft.Network/privateLinkServices/read",
+              "Microsoft.Network/privateLinkServices/write",
+              "Microsoft.Network/privateLinkServices/delete",
+              "Microsoft.Network/privateLinkServices/PrivateEndpointConnectionsApproval/action",
+              "Microsoft.Network/privateLinkServices/privateEndpointConnections/read",
+              "Microsoft.Network/privateLinkServices/privateEndpointConnections/write",
+              "Microsoft.Network/privateLinkServices/privateEndpointConnections/delete"
+            ],
+            "notActions": [],
+            "dataActions": [],
+            "notDataActions": []
+          }
+        ],
+        "assignableScopes": [
+          "[subscription().id]"
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2021-04-01",
+      "name": "[concat('regionRoleDefinitionDeployment-', parameters('regions')[copyIndex()])]",
+      "resourceGroup": "[concat('cl-', parameters('organizationId'), '-azure-', parameters('regions')[copyIndex()])]",
+      "copy": {
+        "name": "regionRoleDefinitionCopy",
+        "count": "[length(parameters('regions'))]"
+      },
+      "dependsOn": [
+        "regionResourceGroupCopy"
+      ],
+      "properties": {
+        "mode": "Incremental",
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "parameters": {
+            "region": {
+              "type": "string"
+            },
+            "organizationId": {
+              "type": "string"
+            },
+            "servicePrincipalObjectId": {
+              "type": "string"
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Authorization/roleDefinitions",
+              "apiVersion": "2022-04-01",
+              "name": "[guid(concat('mdbcloud-', parameters('organizationId'), '-core-region-', parameters('region')), resourceGroup().id)]",
+              "properties": {
+                "roleName": "[concat('mdbcloud-', parameters('organizationId'), '-core-region-', parameters('region'))]",
+                "description": "Manage core orchestration in a region",
+                "type": "CustomRole",
+                "permissions": [
+                  {
+                    "actions": [
+                      "Microsoft.Resources/subscriptions/resourceGroups/read",
+                      "Microsoft.Resources/subscriptions/resourceGroups/write",
+                      "Microsoft.Resources/subscriptions/resourceGroups/delete",
+                      "Microsoft.Resources/subscriptions/resourceGroups/moveResources/action",
+                      "Microsoft.Resources/subscriptions/resourceGroups/validateMoveResources/action",
+                      "Microsoft.Network/internalPublicIpAddresses/read",
+                      "Microsoft.Network/publicIPAddresses/read",
+                      "Microsoft.Network/publicIPAddresses/write",
+                      "Microsoft.Network/publicIPAddresses/delete",
+                      "Microsoft.Network/publicIPAddresses/join/action",
+                      "Microsoft.Network/natGateways/read",
+                      "Microsoft.Network/natGateways/write",
+                      "Microsoft.Network/natGateways/delete",
+                      "Microsoft.Network/natGateways/join/action",
+                      "Microsoft.Network/virtualNetworks/read",
+                      "Microsoft.Network/virtualNetworks/write",
+                      "Microsoft.Network/virtualNetworks/delete",
+                      "Microsoft.Network/virtualNetworks/joinLoadBalancer/action",
+                      "Microsoft.Network/virtualNetworks/join/action",
+                      "Microsoft.Network/virtualNetworks/listDnsResolvers/action",
+                      "Microsoft.Network/virtualNetworks/listDnsForwardingRulesets/action",
+                      "Microsoft.Network/virtualNetworks/checkIpAddressAvailability/read",
+                      "Microsoft.Network/virtualNetworks/privateDnsZoneLinks/read",
+                      "Microsoft.Network/virtualNetworks/subnets/read",
+                      "Microsoft.Network/virtualNetworks/subnets/write",
+                      "Microsoft.Network/virtualNetworks/subnets/delete",
+                      "Microsoft.Network/virtualNetworks/subnets/joinLoadBalancer/action",
+                      "Microsoft.Network/virtualNetworks/subnets/join/action",
+                      "Microsoft.Network/virtualNetworks/subnets/joinViaServiceEndpoint/action",
+                      "Microsoft.Network/virtualNetworks/subnets/prepareNetworkPolicies/action",
+                      "Microsoft.Network/virtualNetworks/subnets/unprepareNetworkPolicies/action",
+                      "Microsoft.Network/virtualNetworks/virtualMachines/read",
+                      "Microsoft.Network/virtualNetworks/subnets/virtualMachines/read",
+                      "Microsoft.ContainerService/managedClusters/read",
+                      "Microsoft.ContainerService/managedClusters/write",
+                      "Microsoft.ContainerService/managedClusters/delete",
+                      "Microsoft.ContainerService/managedClusters/start/action",
+                      "Microsoft.ContainerService/managedClusters/stop/action",
+                      "Microsoft.ContainerService/managedClusters/abort/action",
+                      "Microsoft.ContainerService/managedClusters/listClusterAdminCredential/action",
+                      "Microsoft.ContainerService/managedClusters/listClusterUserCredential/action",
+                      "Microsoft.ContainerService/managedClusters/listClusterMonitoringUserCredential/action",
+                      "Microsoft.ContainerService/managedClusters/resetServicePrincipalProfile/action",
+                      "Microsoft.ContainerService/managedClusters/unpinManagedCluster/action",
+                      "Microsoft.ContainerService/managedClusters/resolvePrivateLinkServiceId/action",
+                      "Microsoft.ContainerService/managedClusters/resetAADProfile/action",
+                      "Microsoft.ContainerService/managedClusters/rotateClusterCertificates/action",
+                      "Microsoft.ContainerService/managedClusters/runCommand/action",
+                      "Microsoft.ContainerService/managedClusters/privateEndpointConnectionsApproval/action",
+                      "Microsoft.ContainerService/managedClusters/agentPools/upgradeNodeImageVersion/write",
+                      "Microsoft.ContainerService/managedClusters/agentPools/read",
+                      "Microsoft.ContainerService/managedClusters/agentPools/write",
+                      "Microsoft.ContainerService/managedClusters/agentPools/delete",
+                      "Microsoft.ContainerService/managedClusters/agentPools/upgradeNodeImageVersion/action",
+                      "Microsoft.ContainerService/managedClusters/agentPools/abort/action",
+                      "Microsoft.ContainerService/managedClusters/agentPools/upgradeProfiles/read",
+                      "Microsoft.ContainerService/managedClusters/diagnosticsState/read",
+                      "Microsoft.ContainerService/managedClusters/extensionaddons/read",
+                      "Microsoft.ContainerService/managedClusters/extensionaddons/write",
+                      "Microsoft.ContainerService/managedClusters/extensionaddons/delete",
+                      "Microsoft.ContainerService/managedClusters/maintenanceConfigurations/read",
+                      "Microsoft.ContainerService/managedClusters/maintenanceConfigurations/write",
+                      "Microsoft.ContainerService/managedClusters/maintenanceConfigurations/delete",
+                      "Microsoft.ContainerService/managedClusters/detectors/read",
+                      "Microsoft.ContainerService/managedClusters/accessProfiles/read",
+                      "Microsoft.ContainerService/managedClusters/accessProfiles/listCredential/action",
+                      "Microsoft.ContainerService/managedClusters/availableAgentPoolVersions/read",
+                      "Microsoft.ContainerService/managedClusters/commandResults/read",
+                      "Microsoft.ContainerService/managedClusters/meshUpgradeProfiles/read",
+                      "Microsoft.ContainerService/managedClusters/providers/Microsoft.Insights/diagnosticSettings/read",
+                      "Microsoft.ContainerService/managedClusters/providers/Microsoft.Insights/diagnosticSettings/write",
+                      "Microsoft.ContainerService/managedClusters/trustedAccessRoleBindings/read",
+                      "Microsoft.ContainerService/managedClusters/trustedAccessRoleBindings/write",
+                      "Microsoft.ContainerService/managedClusters/trustedAccessRoleBindings/delete",
+                      "Microsoft.ContainerService/managedClusters/privateEndpointConnections/read",
+                      "Microsoft.ContainerService/managedClusters/privateEndpointConnections/write",
+                      "Microsoft.ContainerService/managedClusters/privateEndpointConnections/delete",
+                      "Microsoft.ContainerService/managedClusters/providers/Microsoft.Insights/logDefinitions/read",
+                      "Microsoft.ContainerService/managedClusters/providers/Microsoft.Insights/metricDefinitions/read",
+                      "Microsoft.ContainerService/managedClusters/upgradeProfiles/read",
+                      "Microsoft.ContainerService/managedclustersnapshots/read",
+                      "Microsoft.ContainerService/managedclustersnapshots/write",
+                      "Microsoft.ContainerService/managedclustersnapshots/delete",
+                      "Microsoft.ManagedIdentity/register/action",
+                      "Microsoft.ManagedIdentity/operations/read",
+                      "Microsoft.ManagedIdentity/identities/read",
+                      "Microsoft.ManagedIdentity/userAssignedIdentities/assign/action",
+                      "Microsoft.ManagedIdentity/userAssignedIdentities/delete",
+                      "Microsoft.ManagedIdentity/userAssignedIdentities/listAssociatedResources/action",
+                      "Microsoft.ManagedIdentity/userAssignedIdentities/read",
+                      "Microsoft.ManagedIdentity/userAssignedIdentities/write",
+                      "Microsoft.ManagedIdentity/userAssignedIdentities/revokeTokens/action",
+                      "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials/read",
+                      "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials/write",
+                      "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials/delete"
+                    ],
+                    "notActions": [],
+                    "dataActions": [
+                      "Microsoft.ContainerService/managedClusters/*"
+                    ],
+                    "notDataActions": []
+                  }
+                ],
+                "assignableScopes": [
+                  "[resourceGroup().id]"
+                ]
+              }
+            },
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "name": "[guid(concat('mdbcloud-', parameters('organizationId'), '-core-region-assignment-', parameters('region')), resourceGroup().id, parameters('servicePrincipalObjectId'))]",
+              "dependsOn": [
+                "[resourceId('Microsoft.Authorization/roleDefinitions', guid(concat('mdbcloud-', parameters('organizationId'), '-core-region-', parameters('region')), resourceGroup().id))]"
+              ],
+              "properties": {
+                "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', guid(concat('mdbcloud-', parameters('organizationId'), '-core-region-', parameters('region')), resourceGroup().id))]",
+                "principalId": "[parameters('servicePrincipalObjectId')]",
+                "principalType": "ServicePrincipal",
+                "description": "Manage core orchestration in a region"
+              }
+            }
+          ]
+        },
+        "parameters": {
+          "region": {
+            "value": "[parameters('regions')[copyIndex()]]"
+          },
+          "organizationId": {
+            "value": "[parameters('organizationId')]"
+          },
+          "servicePrincipalObjectId": {
+            "value": "[parameters('servicePrincipalObjectId')]"
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "name": "[guid(concat('mdbcloud-', parameters('organizationId'), '-delegation-role-assignment'), subscription().id, parameters('servicePrincipalObjectId'))]",
+      "dependsOn": [
+        "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', guid(concat('mdbcloud-', parameters('organizationId'), '-delegation-role'), subscription().id))]",
+        "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', guid(concat('mdbcloud-', parameters('organizationId'), '-mc-role'), subscription().id))]"
+      ],
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', guid(concat('mdbcloud-', parameters('organizationId'), '-delegation-role'), subscription().id))]",
+        "principalId": "[parameters('servicePrincipalObjectId')]",
+        "principalType": "ServicePrincipal",
+        "description": "testing conditions role",
+        "condition": "[concat('((!(ActionMatches{''Microsoft.Authorization/roleAssignments/write''})) OR (@Request[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals {', guid(concat('mdbcloud-', parameters('organizationId'), '-delegation-role'), subscription().id), ', ', guid(concat('mdbcloud-', parameters('organizationId'), '-mc-role'), subscription().id), ', ', variables('builtInRoleIds').NetworkContributor, ', ', variables('builtInRoleIds').DiskSnapshotContributor, '}))')]",
+        "conditionVersion": "2.0"
+      }
+    }
+  ],
+  "outputs": {
+    "subscriptionId": {
+      "type": "string",
+      "value": "[subscription().subscriptionId]"
+    },
+    "accountResourceGroupName": {
+      "type": "string",
+      "value": "[variables('accountResourceGroupName')]"
+    },
+    "regionResourceGroups": {
+      "type": "array",
+      "copy": {
+        "count": "[length(parameters('regions'))]",
+        "input": {
+          "region": "[parameters('regions')[copyIndex()]]",
+          "name": "[concat('cl-', parameters('organizationId'), '-azure-', parameters('regions')[copyIndex()])]"
+        }
+      }
+    }
+  }
+}

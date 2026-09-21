@@ -1,0 +1,22 @@
+# Terraform Variables Example
+#
+# This file shows example values for the required and optional variables.
+#
+# To use this file:
+# 1. Copy this file to terraform.tfvars: cp terraform.tfvars.example terraform.tfvars
+# 2. Replace the placeholder values with your actual values
+# 3. Run: terraform plan or terraform apply
+
+# REQUIRED: Your organization ID
+organization_id = "your-org-id-here"
+
+# REQUIRED: Client ID of the MariaDB Cloud tenant
+client_id = "00000000-0000-0000-0000-000000000000"
+
+# REQUIRED: List of Azure regions to deploy resources
+# Default: ["eastus"]
+regions = ["eastus"]
+
+# Examples for multiple regions:
+# regions = ["eastus", "westus2"]
+# regions = ["eastus", "westus2", "centralus", "northeurope"]

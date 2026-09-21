@@ -1,0 +1,37 @@
+# Terraform Backend Configuration Example
+#
+# This file shows how to configure Azure Storage as the backend for Terraform state.
+#
+# To use this file:
+# 1. Copy this file to backend.tf: cp backend.tf.example backend.tf
+# 2. Replace the placeholder values with your actual Azure Storage details
+# 3. Run: terraform init
+#
+# Alternatively, you can pass backend configuration during init:
+# terraform init \
+#   -backend-config="resource_group_name=terraform-state-rg" \
+#   -backend-config="storage_account_name=tfstateXXXXX" \
+#   -backend-config="container_name=tfstate" \
+#   -backend-config="key=byoa-azure.tfstate"
+
+terraform {
+  backend "azurerm" {
+    # Resource group containing the storage account
+    resource_group_name = "terraform-state-rg"
+
+    # Storage account name (must be globally unique, 3-24 lowercase letters/numbers)
+    storage_account_name = "tfstateXXXXX"  # Replace with your storage account name
+
+    # Container name within the storage account
+    container_name = "tfstate"
+
+    # State file name (unique per Terraform configuration)
+    key = "byoa-azure.tfstate"
+
+    # Optional: Uncomment to use a specific subscription for state storage
+    # subscription_id = "00000000-0000-0000-0000-000000000000"
+
+    # Optional: Uncomment to use a specific tenant
+    # tenant_id = "00000000-0000-0000-0000-000000000000"
+  }
+}

@@ -111,7 +111,7 @@ The Terraform configuration uses the following variables:
 **Option 1: Create a `terraform.tfvars` file**
 
 ```hcl
-client_id       = "your-client-id"
+client_id       = "mariadb-cloud-client-id"
 organization_id = "your-org-id"
 regions         = ["eastus", "westus2"]
 ```
@@ -119,13 +119,13 @@ regions         = ["eastus", "westus2"]
 **Option 2: Use command-line flags**
 
 ```bash
-terraform apply -var="client_id=your-client-id" -var="organization_id=your-org-id" -var='regions=["eastus","westus2"]'
+terraform apply -var="client_id=mariadb-cloud-client-id" -var="organization_id=your-org-id" -var='regions=["eastus","westus2"]'
 ```
 
 **Option 3: Use environment variables**
 
 ```bash
-export TF_VAR_client_id="your-client-id"
+export TF_VAR_client_id="mariadb-cloud-client-id"
 export TF_VAR_organization_id="your-org-id"
 export TF_VAR_regions='["eastus","westus2"]'
 ```

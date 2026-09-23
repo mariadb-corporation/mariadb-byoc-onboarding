@@ -11,26 +11,33 @@ variable "org_id" {
 variable "allowed_regions" {
   type        = list(string)
   description = "GCP regions where SkySQL resources may be created. Drives IAM condition scoping; the first entry is also used as the Google provider's default region."
-  default     = ["us-central1"]
   validation {
     condition     = length(var.allowed_regions) > 0
     error_message = "allowed_regions must contain at least one region."
   }
 }
 
+variable "orchestration_project_id" {
+  type        = string
+  description = "The GCP project ID hosting MariaDB Cloud's standard service accounts."
+}
+
 variable "orchestration_sa_email" {
   type        = string
-  description = "The email of the orchestration service account that will be granted permissions."
+  description = "The email of the orchestration service account that will be granted permissions. Derived from orchestration_project_id if not set."
+  default     = null
 }
 
 variable "federated_manager_sa_email" {
   type        = string
-  description = "The email of the federated manager service account that will be granted roles/container.admin on SkySQL clusters."
+  description = "The email of the federated manager service account that will be granted roles/container.admin on SkySQL clusters. Derived from orchestration_project_id if not set."
+  default     = null
 }
 
 variable "backup_sa_email" {
   type        = string
-  description = "The email of the backup service account that will be granted permissions to manage backup service accounts and storage buckets."
+  description = "The email of the backup service account that will be granted permissions to manage backup service accounts and storage buckets. Derived from orchestration_project_id if not set."
+  default     = null
 }
 
 # -----------------------------------------------------------------------------

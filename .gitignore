@@ -12,6 +12,7 @@
 **/*.auto.tfvars
 **/backend.tf
 **/tfplan
+**/metadata.json
 
 # Editors / OS
 .DS_Store

@@ -67,7 +67,7 @@ resource "google_project_iam_custom_role" "skysql_storage" {
 resource "google_project_iam_member" "skysql_storage" {
   project = var.project_id
   role    = google_project_iam_custom_role.skysql_storage.id
-  member  = "serviceAccount:${var.orchestration_sa_email}"
+  member  = "serviceAccount:${local.orchestration_sa_email}"
 
   condition {
     title       = "restrict_to_skysql_buckets"
@@ -90,7 +90,7 @@ resource "google_project_iam_custom_role" "storage_lister" {
 resource "google_project_iam_member" "storage_lister" {
   project = var.project_id
   role    = google_project_iam_custom_role.storage_lister.id
-  member  = "serviceAccount:${var.orchestration_sa_email}"
+  member  = "serviceAccount:${local.orchestration_sa_email}"
 }
 
 # Project-level permission to create buckets. Like storage.buckets.list, the
@@ -127,7 +127,7 @@ resource "google_project_iam_custom_role" "workload_identity_creator" {
 resource "google_project_iam_member" "workload_identity_creator" {
   project = var.project_id
   role    = google_project_iam_custom_role.workload_identity_creator.id
-  member  = "serviceAccount:${var.orchestration_sa_email}"
+  member  = "serviceAccount:${local.orchestration_sa_email}"
 }
 
 # Custom role for IAM management (Delegated Granting)
@@ -145,7 +145,7 @@ resource "google_project_iam_custom_role" "sa_creator" {
 resource "google_project_iam_member" "sa_creator" {
   project = var.project_id
   role    = google_project_iam_custom_role.sa_creator.id
-  member  = "serviceAccount:${var.orchestration_sa_email}"
+  member  = "serviceAccount:${local.orchestration_sa_email}"
 }
 
 # Custom role for creating GKE clusters and node pools
@@ -175,14 +175,14 @@ resource "google_project_iam_custom_role" "container_creator" {
 resource "google_project_iam_member" "container_creator" {
   project = var.project_id
   role    = google_project_iam_custom_role.container_creator.id
-  member  = "serviceAccount:${var.orchestration_sa_email}"
+  member  = "serviceAccount:${local.orchestration_sa_email}"
 }
 
 # Grant the orchestration service account the ability to use the default compute service account
 resource "google_service_account_iam_member" "default_compute_sa_user" {
   service_account_id = "projects/${var.project_id}/serviceAccounts/${data.google_project.project.number}-compute@developer.gserviceaccount.com"
   role               = "roles/iam.serviceAccountUser"
-  member             = "serviceAccount:${var.orchestration_sa_email}"
+  member             = "serviceAccount:${local.orchestration_sa_email}"
   depends_on = [
     google_project_service.services
   ]
@@ -203,7 +203,7 @@ resource "google_project_iam_custom_role" "container_admin" {
 resource "google_project_iam_member" "container_admin" {
   project = var.project_id
   role    = google_project_iam_custom_role.container_admin.id
-  member  = "serviceAccount:${var.orchestration_sa_email}"
+  member  = "serviceAccount:${local.orchestration_sa_email}"
 
   condition {
     title       = "restrict_to_skysql_clusters"
@@ -278,7 +278,7 @@ resource "google_project_iam_custom_role" "network_admin" {
 resource "google_project_iam_member" "network_admin" {
   project = var.project_id
   role    = google_project_iam_custom_role.network_admin.id
-  member  = "serviceAccount:${var.orchestration_sa_email}"
+  member  = "serviceAccount:${local.orchestration_sa_email}"
 }
 
 
@@ -296,7 +296,7 @@ resource "google_project_iam_custom_role" "network_cleanup" {
 resource "google_project_iam_member" "network_cleanup" {
   project = var.project_id
   role    = google_project_iam_custom_role.network_cleanup.id
-  member  = "serviceAccount:${var.orchestration_sa_email}"
+  member  = "serviceAccount:${local.orchestration_sa_email}"
 
   condition {
     title       = "restrict_to_skysql_network_resources"
@@ -322,7 +322,7 @@ resource "google_project_iam_custom_role" "iam_admin" {
 resource "google_project_iam_member" "iam_admin" {
   project = var.project_id
   role    = google_project_iam_custom_role.iam_admin.id
-  member  = "serviceAccount:${var.orchestration_sa_email}"
+  member  = "serviceAccount:${local.orchestration_sa_email}"
 
   condition {
     title       = "delegated_role_granting_and_skysql_sa_boundary"
@@ -345,7 +345,7 @@ resource "google_project_iam_custom_role" "iam_project_admin" {
 resource "google_project_iam_member" "iam_project_admin" {
   project = var.project_id
   role    = google_project_iam_custom_role.iam_project_admin.id
-  member  = "serviceAccount:${var.orchestration_sa_email}"
+  member  = "serviceAccount:${local.orchestration_sa_email}"
 
   condition {
     title       = "Restrict_to_Project_and_SA"
@@ -362,7 +362,7 @@ resource "google_project_iam_member" "iam_project_admin" {
 resource "google_project_iam_member" "orchestration_sa_k8s_admin" {
   project = var.project_id
   role    = "roles/container.admin"
-  member  = "serviceAccount:${var.orchestration_sa_email}"
+  member  = "serviceAccount:${local.orchestration_sa_email}"
 
   condition {
     title       = "restrict_to_skysql_clusters"
@@ -377,7 +377,7 @@ resource "google_project_iam_member" "orchestration_sa_k8s_admin" {
 resource "google_project_iam_member" "federated_manager_sa_k8s_admin" {
   project = var.project_id
   role    = "roles/container.admin"
-  member  = "serviceAccount:${var.federated_manager_sa_email}"
+  member  = "serviceAccount:${local.federated_manager_sa_email}"
 
   condition {
     title       = "restrict_to_skysql_clusters"
@@ -392,7 +392,7 @@ resource "google_project_iam_member" "federated_manager_sa_k8s_admin" {
 resource "google_project_iam_member" "backup_service_sa_k8s_admin" {
   project = var.project_id
   role    = "roles/container.admin"
-  member  = "serviceAccount:${var.backup_sa_email}"
+  member  = "serviceAccount:${local.backup_sa_email}"
 
   condition {
     title       = "restrict_to_skysql_clusters"
@@ -418,7 +418,7 @@ resource "google_project_iam_custom_role" "default_network_updater" {
 resource "google_project_iam_member" "default_network_updater" {
   project = var.project_id
   role    = google_project_iam_custom_role.default_network_updater.id
-  member  = "serviceAccount:${var.orchestration_sa_email}"
+  member  = "serviceAccount:${local.orchestration_sa_email}"
 
   condition {
     title       = "restrict_to_default_network"
@@ -441,7 +441,7 @@ resource "google_project_iam_custom_role" "default_subnetwork_user" {
 resource "google_project_iam_member" "default_subnetwork_user" {
   project = var.project_id
   role    = google_project_iam_custom_role.default_subnetwork_user.id
-  member  = "serviceAccount:${var.orchestration_sa_email}"
+  member  = "serviceAccount:${local.orchestration_sa_email}"
 
   condition {
     title       = "restrict_to_default_subnetwork"
@@ -464,7 +464,7 @@ resource "google_project_iam_custom_role" "firewall_manager" {
 resource "google_project_iam_member" "firewall_manager" {
   project = var.project_id
   role    = google_project_iam_custom_role.firewall_manager.id
-  member  = "serviceAccount:${var.orchestration_sa_email}"
+  member  = "serviceAccount:${local.orchestration_sa_email}"
 
   condition {
     title       = "restrict_to_skysql_firewalls"
@@ -488,7 +488,7 @@ resource "google_project_iam_custom_role" "address_labeler" {
 resource "google_project_iam_member" "address_labeler" {
   project = var.project_id
   role    = google_project_iam_custom_role.address_labeler.id
-  member  = "serviceAccount:${var.orchestration_sa_email}"
+  member  = "serviceAccount:${local.orchestration_sa_email}"
 
   condition {
     title       = "restrict_to_cl_org_addresses"
@@ -510,7 +510,7 @@ resource "google_project_iam_custom_role" "db_subnetwork_manager" {
 resource "google_project_iam_member" "db_subnetwork_manager" {
   project = var.project_id
   role    = google_project_iam_custom_role.db_subnetwork_manager.id
-  member  = "serviceAccount:${var.orchestration_sa_email}"
+  member  = "serviceAccount:${local.orchestration_sa_email}"
 
   condition {
     title       = "restrict_to_db_subnetworks"
@@ -542,7 +542,7 @@ resource "google_project_iam_custom_role" "backup_pod" {
 resource "google_project_iam_member" "backup_sa_creator" {
   project = var.project_id
   role    = google_project_iam_custom_role.sa_creator.id
-  member  = "serviceAccount:${var.backup_sa_email}"
+  member  = "serviceAccount:${local.backup_sa_email}"
 }
 
 # Backup service: manage IAM policy on 'skysql' SAs and grant only the
@@ -550,7 +550,7 @@ resource "google_project_iam_member" "backup_sa_creator" {
 resource "google_project_iam_member" "backup_iam_admin" {
   project = var.project_id
   role    = google_project_iam_custom_role.iam_admin.id
-  member  = "serviceAccount:${var.backup_sa_email}"
+  member  = "serviceAccount:${local.backup_sa_email}"
 
   condition {
     title       = "delegated_role_granting_and_skysql_sa_boundary"
@@ -565,7 +565,7 @@ resource "google_project_iam_member" "backup_iam_admin" {
 resource "google_project_iam_member" "backup_storage" {
   project = var.project_id
   role    = google_project_iam_custom_role.skysql_storage.id
-  member  = "serviceAccount:${var.backup_sa_email}"
+  member  = "serviceAccount:${local.backup_sa_email}"
 
   condition {
     title       = "restrict_to_backup_buckets_and_backup_grants"
@@ -581,7 +581,7 @@ resource "google_project_iam_member" "backup_storage" {
 resource "google_project_iam_member" "backup_storage_creator" {
   project = var.project_id
   role    = google_project_iam_custom_role.storage_creator.id
-  member  = "serviceAccount:${var.backup_sa_email}"
+  member  = "serviceAccount:${local.backup_sa_email}"
 }
 
 resource "google_logging_log_view" "cluster_logs" {
@@ -594,7 +594,7 @@ resource "google_logging_log_view" "cluster_logs" {
 resource "google_project_iam_member" "cluster_log_view_accessor" {
   project = var.project_id
   role    = "roles/logging.viewAccessor"
-  member  = "serviceAccount:${var.orchestration_sa_email}"
+  member  = "serviceAccount:${local.orchestration_sa_email}"
 
   condition {
     title       = "restrict_to_skysql_log_view"
@@ -619,5 +619,5 @@ resource "google_project_iam_custom_role" "monitoring_viewer" {
 resource "google_project_iam_member" "monitoring_viewer" {
   project = var.project_id
   role    = google_project_iam_custom_role.monitoring_viewer.id
-  member  = "serviceAccount:${var.orchestration_sa_email}"
+  member  = "serviceAccount:${local.orchestration_sa_email}"
 }

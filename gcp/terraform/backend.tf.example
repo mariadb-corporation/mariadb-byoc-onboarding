@@ -1,0 +1,26 @@
+# Terraform Backend Configuration Example
+#
+# The guided Cloud Shell walkthrough generates backend.tf for you
+# (scripts/20-state-backend.sh). Use this file only if you are configuring the
+# backend by hand.
+#
+# To use this file:
+# 1. Copy it to backend.tf:  cp backend.tf.example backend.tf
+# 2. Replace the placeholder values with your bucket and prefix
+# 3. Run: terraform init
+#
+# Alternatively, pass the backend configuration at init time:
+# terraform init \
+#   -backend-config="bucket=my-project-mariadb-byoc-tfstate" \
+#   -backend-config="prefix=mariadb-byoc/my-project"
+
+terraform {
+  backend "gcs" {
+    # Bucket holding the state object. Must already exist.
+    bucket = "my-project-mariadb-byoc-tfstate"
+
+    # Object prefix within the bucket. Include the project ID if one bucket
+    # holds state for more than one project.
+    prefix = "mariadb-byoc/my-project"
+  }
+}

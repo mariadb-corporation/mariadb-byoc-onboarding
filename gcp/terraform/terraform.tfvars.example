@@ -1,0 +1,37 @@
+# Terraform Variables Example
+#
+# The guided Cloud Shell walkthrough writes terraform.tfvars for you
+# (scripts/10-configure.sh). Use this file only if you are filling the values
+# in by hand.
+#
+# To use this file:
+# 1. Copy it to terraform.tfvars:  cp terraform.tfvars.example terraform.tfvars
+# 2. Replace the placeholder values with the ones shown in the MariaDB CLoud portal
+# 3. Run: terraform plan
+
+# REQUIRED: the GCP project to enable MariaDB BYOC in.
+project_id = "my-project"
+
+# REQUIRED: your MariaDB Cloud organization ID, shown in the MariaDB CLoud portal.
+# This is NOT a Google Cloud organization ID.
+org_id = "org*****"
+
+# REQUIRED: the three MariaDB service accounts, shown in the MariaDB Cloud portal.
+orchestration_sa_email     = ""
+federated_manager_sa_email = ""
+backup_sa_email            = ""
+
+# OPTIONAL: regions MariaDB  may create resources in. The first entry is also the
+# Google provider's default region.
+# Default: ["us-central1"]
+allowed_regions = ["us-central1"]
+
+# Examples for multiple regions:
+# allowed_regions = ["us-central1", "us-east1"]
+# allowed_regions = ["europe-west1", "europe-west4"]
+
+# OPTIONAL, normally written by scripts/20-state-backend.sh: where the Terraform
+# state for this deployment lives. Leave empty for local state. If you configure
+# a backend by hand, set these to match backend.tf.
+# state_bucket = "my-project-mariadb-byoc-tfstate"
+# state_prefix = "mariadb-byoc/my-project"

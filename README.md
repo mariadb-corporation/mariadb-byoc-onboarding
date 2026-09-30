@@ -15,6 +15,12 @@ applying the configuration — no Terraform knowledge needed. Reference
 documentation is in [gcp/README.md](gcp/README.md); the Terraform module
 itself is in [gcp/terraform/](gcp/terraform/).
 
+## AWS
+
+- [aws/cloudformation/](aws/cloudformation/) — a CloudFormation template,
+  deployable from the AWS CLI or console
+- [aws/terraform/](aws/terraform/) — the equivalent Terraform module
+
 ## Azure
 
 - [azure/arm/](azure/arm/) — an ARM template, deployable from the Azure portal,

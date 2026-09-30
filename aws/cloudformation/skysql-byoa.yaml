@@ -1,0 +1,1626 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  SkySQL BYOA (Bring Your Own Account) - Creates IAM role, orchestration
+  policies, and permission boundaries for SkySQL to manage resources in
+  this AWS account.
+
+# =============================================================================
+# Parameters
+# =============================================================================
+
+Parameters:
+  OrchestrationAccountId:
+    Type: String
+    Description: >-
+      12-digit AWS Account ID of the SkySQL orchestration account that will
+      assume the skysql-orchestration role.
+    AllowedPattern: '^\d{12}$'
+    ConstraintDescription: Must be a 12-digit AWS Account ID.
+  OrgId:
+    Type: String
+    MinLength: 1
+    Description: >-
+      SkySQL organization id for this account. Copy it verbatim from the
+      SkySQL portal.
+
+# =============================================================================
+# Mappings
+# =============================================================================
+
+Mappings:
+  TemplateMetadata:
+    Version:
+      Value: '1.0.0'
+    ParameterName:
+      Value: /skysql/byoa/metadata
+
+# =============================================================================
+# Resources
+# =============================================================================
+
+Resources:
+
+  # ---------------------------------------------------------------------------
+  # Permission Boundary: EKS Cluster Role (control plane)
+  # ---------------------------------------------------------------------------
+  ClusterRolePermissionBoundary:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: SkySQL-ClusterRole-PermissionBoundary
+      Description: Permission boundary for EKS cluster control plane role
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: EC2Describe
+            Effect: Allow
+            Action:
+              - ec2:DescribeAccountAttributes
+              - ec2:DescribeAddresses
+              - ec2:DescribeAvailabilityZones
+              - ec2:DescribeInstances
+              - ec2:DescribeInternetGateways
+              - ec2:DescribeNetworkInterfaces
+              - ec2:DescribeRouteTables
+              - ec2:DescribeSecurityGroups
+              - ec2:DescribeSubnets
+              - ec2:DescribeVolumes
+              - ec2:DescribeVolumesModifications
+              - ec2:DescribeVpcs
+            Resource: '*'
+          - Sid: EC2ENI
+            Effect: Allow
+            Action:
+              - ec2:AssignPrivateIpAddresses
+              - ec2:AttachNetworkInterface
+              - ec2:CreateNetworkInterface
+              - ec2:CreateNetworkInterfacePermission
+              - ec2:DeleteNetworkInterface
+              - ec2:DetachNetworkInterface
+              - ec2:ModifyNetworkInterfaceAttribute
+              - ec2:UnassignPrivateIpAddresses
+            Resource: '*'
+          - Sid: EC2SecurityGroupMutate
+            Effect: Allow
+            Action:
+              - ec2:AuthorizeSecurityGroupIngress
+              - ec2:RevokeSecurityGroupIngress
+            Resource: '*'
+          - Sid: EC2SecurityGroupCreate
+            Effect: Allow
+            Action:
+              - ec2:CreateSecurityGroup
+            Resource: '*'
+          - Sid: EC2RouteMutate
+            Effect: Allow
+            Action:
+              - ec2:CreateRoute
+              - ec2:DeleteRoute
+            Resource: '*'
+            Condition:
+              StringEquals:
+                aws:ResourceTag/platform: skysql
+          - Sid: EC2VolumeCreate
+            Effect: Allow
+            Action:
+              - ec2:CreateVolume
+            Resource: '*'
+            Condition:
+              StringEquals:
+                aws:RequestTag/platform: skysql
+          - Sid: EC2VolumeMutate
+            Effect: Allow
+            Action:
+              - ec2:AttachVolume
+              - ec2:DeleteVolume
+              - ec2:DetachVolume
+              - ec2:ModifyVolume
+            Resource: '*'
+            Condition:
+              StringEquals:
+                ec2:ResourceTag/platform: skysql
+          - Sid: EC2ModifyInstance
+            Effect: Allow
+            Action:
+              - ec2:ModifyInstanceAttribute
+            Resource: '*'
+          - Sid: EC2CreateTagsOnNew
+            Effect: Allow
+            Action:
+              - ec2:CreateTags
+            Resource: '*'
+            Condition:
+              StringEquals:
+                ec2:CreateAction:
+                  - CreateNetworkInterface
+                  - CreateSecurityGroup
+                  - CreateVolume
+          - Sid: EC2CreateTagsExisting
+            Effect: Allow
+            Action:
+              - ec2:CreateTags
+            Resource: '*'
+            Condition:
+              StringEquals:
+                ec2:ResourceTag/platform: skysql
+          - Sid: AutoscalingDescribe
+            Effect: Allow
+            Action:
+              - autoscaling:DescribeAutoScalingGroups
+            Resource: '*'
+          - Sid: AutoscalingMutate
+            Effect: Allow
+            Action:
+              - autoscaling:UpdateAutoScalingGroup
+            Resource: '*'
+            Condition:
+              StringEquals:
+                autoscaling:ResourceTag/platform: skysql
+          - Sid: ELBDescribe
+            Effect: Allow
+            Action:
+              - elasticloadbalancing:DescribeListenerCertificates
+              - elasticloadbalancing:DescribeListeners
+              - elasticloadbalancing:DescribeLoadBalancerAttributes
+              - elasticloadbalancing:DescribeLoadBalancerPolicies
+              - elasticloadbalancing:DescribeLoadBalancers
+              - elasticloadbalancing:DescribeRules
+              - elasticloadbalancing:DescribeSSLPolicies
+              - elasticloadbalancing:DescribeTags
+              - elasticloadbalancing:DescribeTargetGroupAttributes
+              - elasticloadbalancing:DescribeTargetGroups
+              - elasticloadbalancing:DescribeTargetHealth
+            Resource: '*'
+          - Sid: ELBMutate
+            Effect: Allow
+            Action:
+              - elasticloadbalancing:AddTags
+              - elasticloadbalancing:CreateListener
+              - elasticloadbalancing:CreateLoadBalancer
+              - elasticloadbalancing:CreateLoadBalancerListeners
+              - elasticloadbalancing:CreateLoadBalancerPolicy
+              - elasticloadbalancing:CreateRule
+              - elasticloadbalancing:CreateTargetGroup
+              - elasticloadbalancing:ConfigureHealthCheck
+              - elasticloadbalancing:DeleteListener
+              - elasticloadbalancing:DeleteLoadBalancer
+              - elasticloadbalancing:DeleteLoadBalancerListeners
+              - elasticloadbalancing:DeleteRule
+              - elasticloadbalancing:DeleteTargetGroup
+              - elasticloadbalancing:DeregisterInstancesFromLoadBalancer
+              - elasticloadbalancing:DeregisterTargets
+              - elasticloadbalancing:DetachLoadBalancerFromSubnets
+              - elasticloadbalancing:ModifyListener
+              - elasticloadbalancing:ModifyLoadBalancerAttributes
+              - elasticloadbalancing:ModifyRule
+              - elasticloadbalancing:ModifyTargetGroup
+              - elasticloadbalancing:ModifyTargetGroupAttributes
+              - elasticloadbalancing:RegisterInstancesWithLoadBalancer
+              - elasticloadbalancing:RegisterTargets
+              - elasticloadbalancing:RemoveTags
+              - elasticloadbalancing:SetLoadBalancerPoliciesForBackendServer
+              - elasticloadbalancing:SetLoadBalancerPoliciesOfListener
+              - elasticloadbalancing:SetSecurityGroups
+              - elasticloadbalancing:SetSubnets
+            Resource: '*'
+          - Sid: ServiceLinkedRole
+            Effect: Allow
+            Action:
+              - iam:CreateServiceLinkedRole
+            Resource: '*'
+            Condition:
+              StringEquals:
+                iam:AWSServiceName: elasticloadbalancing.amazonaws.com
+          - Sid: KMS
+            Effect: Allow
+            Action:
+              - kms:DescribeKey
+            Resource: '*'
+          - Sid: DenyIAMWrite
+            Effect: Deny
+            Action:
+              - iam:AttachGroupPolicy
+              - iam:AttachRolePolicy
+              - iam:AttachUserPolicy
+              - iam:CreatePolicy
+              - iam:CreatePolicyVersion
+              - iam:CreateRole
+              - iam:CreateUser
+              - iam:DeletePolicy
+              - iam:DeletePolicyVersion
+              - iam:DeleteRole
+              - iam:DeleteRolePermissionsBoundary
+              - iam:DeleteRolePolicy
+              - iam:DeleteUser
+              - iam:DetachGroupPolicy
+              - iam:DetachRolePolicy
+              - iam:DetachUserPolicy
+              - iam:PassRole
+              - iam:PutGroupPolicy
+              - iam:PutRolePermissionsBoundary
+              - iam:PutRolePolicy
+              - iam:PutUserPolicy
+              - iam:UpdateAssumeRolePolicy
+            Resource: '*'
+
+  # ---------------------------------------------------------------------------
+  # Permission Boundary: Node Role (node pools)
+  # ---------------------------------------------------------------------------
+  NodeRolePermissionBoundary:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: SkySQL-NodeRole-PermissionBoundary
+      Description: Permission boundary for EKS node pool roles
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: EC2Describe
+            Effect: Allow
+            Action:
+              - ec2:DescribeAvailabilityZones
+              - ec2:DescribeImages
+              - ec2:DescribeInstances
+              - ec2:DescribeNetworkInterfaces
+              - ec2:DescribeSecurityGroups
+              - ec2:DescribeSnapshots
+              - ec2:DescribeSubnets
+              - ec2:DescribeTags
+              - ec2:DescribeVolumes
+              - ec2:DescribeVolumesModifications
+              - ec2:DescribeVpcs
+            Resource: '*'
+          - Sid: EC2ENICreate
+            Effect: Allow
+            Action:
+              - ec2:CreateNetworkInterface
+            Resource: '*'
+          - Sid: EC2ENIMutate
+            Effect: Allow
+            Action:
+              - ec2:AssignPrivateIpAddresses
+              - ec2:AttachNetworkInterface
+              - ec2:CreateNetworkInterfacePermission
+              - ec2:DeleteNetworkInterface
+              - ec2:DetachNetworkInterface
+              - ec2:ModifyNetworkInterfaceAttribute
+              - ec2:UnassignPrivateIpAddresses
+            Resource: '*'
+            Condition:
+              StringEquals:
+                ec2:ResourceTag/platform: skysql
+          - Sid: EC2CreateTagsCNI
+            Effect: Allow
+            Action:
+              - ec2:CreateTags
+            Resource: !Sub 'arn:aws:ec2:*:*:network-interface/*'
+            Condition:
+              StringEquals:
+                ec2:ResourceTag/platform: skysql
+          - Sid: ECR
+            Effect: Allow
+            Action:
+              - ecr:BatchCheckLayerAvailability
+              - ecr:BatchGetImage
+              - ecr:DescribeImages
+              - ecr:DescribeImageScanFindings
+              - ecr:DescribeRepositories
+              - ecr:GetAuthorizationToken
+              - ecr:GetDownloadUrlForLayer
+              - ecr:GetLifecyclePolicy
+              - ecr:GetLifecyclePolicyPreview
+              - ecr:GetRepositoryPolicy
+              - ecr:ListImages
+              - ecr:ListTagsForResource
+            Resource: '*'
+          - Sid: SSM
+            Effect: Allow
+            Action:
+              - ssm:GetParameter
+            Resource: !Sub 'arn:aws:ssm:*::parameter/aws/service/eks/optimized-ami/*'
+          - Sid: EKS
+            Effect: Allow
+            Action:
+              - eks:DescribeCluster
+            Resource: '*'
+          - Sid: CSIMutateTagged
+            Effect: Allow
+            Action:
+              - ec2:AttachVolume
+              - ec2:CreateSnapshot
+              - ec2:DeleteSnapshot
+              - ec2:DeleteTags
+              - ec2:DeleteVolume
+              - ec2:DetachVolume
+              - ec2:ModifyVolume
+            Resource: '*'
+            Condition:
+              StringEquals:
+                ec2:ResourceTag/platform: skysql
+          - Sid: CSICreateTagged
+            Effect: Allow
+            Action:
+              - ec2:CreateSnapshot
+              - ec2:CreateTags
+              - ec2:CreateVolume
+            Resource: '*'
+            Condition:
+              StringEquals:
+                aws:RequestTag/platform: skysql
+          - Sid: CSICreateFromSnapshot
+            Effect: Allow
+            Action:
+              - ec2:CreateVolume
+            Resource: !Sub 'arn:aws:ec2:*:*:snapshot/*'
+            Condition:
+              StringEquals:
+                aws:ResourceTag/platform: skysql
+          - Sid: DenyIAMWrite
+            Effect: Deny
+            Action:
+              - iam:AttachGroupPolicy
+              - iam:AttachRolePolicy
+              - iam:AttachUserPolicy
+              - iam:CreatePolicy
+              - iam:CreatePolicyVersion
+              - iam:CreateRole
+              - iam:CreateUser
+              - iam:DeletePolicy
+              - iam:DeletePolicyVersion
+              - iam:DeleteRole
+              - iam:DeleteRolePermissionsBoundary
+              - iam:DeleteRolePolicy
+              - iam:DeleteUser
+              - iam:DetachGroupPolicy
+              - iam:DetachRolePolicy
+              - iam:DetachUserPolicy
+              - iam:PassRole
+              - iam:PutGroupPolicy
+              - iam:PutRolePermissionsBoundary
+              - iam:PutRolePolicy
+              - iam:PutUserPolicy
+              - iam:UpdateAssumeRolePolicy
+            Resource: '*'
+
+  # ---------------------------------------------------------------------------
+  # Permission Boundary: Autoscaler
+  # ---------------------------------------------------------------------------
+  AutoscalerPermissionBoundary:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: SkySQL-Autoscaler-PermissionBoundary
+      Description: Permission boundary for cluster autoscaler role
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AutoscalingDescribe
+            Effect: Allow
+            Action:
+              - autoscaling:DescribeAutoScalingGroups
+              - autoscaling:DescribeAutoScalingInstances
+              - autoscaling:DescribeLaunchConfigurations
+              - autoscaling:DescribeScalingActivities
+              - autoscaling:DescribeTags
+            Resource: '*'
+          - Sid: AutoscalingMutate
+            Effect: Allow
+            Action:
+              - autoscaling:SetDesiredCapacity
+              - autoscaling:TerminateInstanceInAutoScalingGroup
+              - autoscaling:UpdateAutoScalingGroup
+            Resource: '*'
+            Condition:
+              StringEquals:
+                autoscaling:ResourceTag/platform: skysql
+          - Sid: EC2Describe
+            Effect: Allow
+            Action:
+              - ec2:DescribeImages
+              - ec2:DescribeInstances
+              - ec2:DescribeInstanceTypes
+              - ec2:DescribeLaunchTemplateVersions
+              - ec2:GetLaunchTemplateData
+            Resource: '*'
+          - Sid: EKS
+            Effect: Allow
+            Action:
+              - eks:DescribeCluster
+            Resource: '*'
+          - Sid: DenyIAMWrite
+            Effect: Deny
+            Action:
+              - iam:AttachGroupPolicy
+              - iam:AttachRolePolicy
+              - iam:AttachUserPolicy
+              - iam:CreatePolicy
+              - iam:CreatePolicyVersion
+              - iam:CreateRole
+              - iam:CreateUser
+              - iam:DeletePolicy
+              - iam:DeletePolicyVersion
+              - iam:DeleteRole
+              - iam:DeleteRolePermissionsBoundary
+              - iam:DeleteRolePolicy
+              - iam:DeleteUser
+              - iam:DetachGroupPolicy
+              - iam:DetachRolePolicy
+              - iam:DetachUserPolicy
+              - iam:PassRole
+              - iam:PutGroupPolicy
+              - iam:PutRolePermissionsBoundary
+              - iam:PutRolePolicy
+              - iam:PutUserPolicy
+              - iam:UpdateAssumeRolePolicy
+            Resource: '*'
+
+  # ---------------------------------------------------------------------------
+  # Permission Boundary: LB Controller
+  # ---------------------------------------------------------------------------
+  LBControllerPermissionBoundary:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: SkySQL-LBController-PermissionBoundary
+      Description: Permission boundary for AWS Load Balancer Controller role
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: ELBDescribe
+            Effect: Allow
+            Action:
+              - elasticloadbalancing:DescribeListenerAttributes
+              - elasticloadbalancing:DescribeListenerCertificates
+              - elasticloadbalancing:DescribeListeners
+              - elasticloadbalancing:DescribeLoadBalancerAttributes
+              - elasticloadbalancing:DescribeLoadBalancers
+              - elasticloadbalancing:DescribeRules
+              - elasticloadbalancing:DescribeSSLPolicies
+              - elasticloadbalancing:DescribeTags
+              - elasticloadbalancing:DescribeTargetGroupAttributes
+              - elasticloadbalancing:DescribeTargetGroups
+              - elasticloadbalancing:DescribeTargetHealth
+            Resource: '*'
+          - Sid: ELBCreate
+            Effect: Allow
+            Action:
+              - elasticloadbalancing:CreateLoadBalancer
+              - elasticloadbalancing:CreateTargetGroup
+            Resource: '*'
+            Condition:
+              StringEquals:
+                aws:RequestTag/platform: skysql
+          - Sid: ELBMutate
+            Effect: Allow
+            Action:
+              - elasticloadbalancing:DeleteLoadBalancer
+              - elasticloadbalancing:DeleteTargetGroup
+              - elasticloadbalancing:ModifyLoadBalancerAttributes
+              - elasticloadbalancing:ModifyTargetGroup
+              - elasticloadbalancing:ModifyTargetGroupAttributes
+              - elasticloadbalancing:SetIpAddressType
+              - elasticloadbalancing:SetSecurityGroups
+              - elasticloadbalancing:SetSubnets
+            Resource: '*'
+            Condition:
+              StringEquals:
+                aws:ResourceTag/platform: skysql
+          - Sid: ELBListenerOps
+            Effect: Allow
+            Action:
+              - elasticloadbalancing:AddListenerCertificates
+              - elasticloadbalancing:CreateListener
+              - elasticloadbalancing:CreateRule
+              - elasticloadbalancing:DeleteListener
+              - elasticloadbalancing:DeleteRule
+              - elasticloadbalancing:ModifyListener
+              - elasticloadbalancing:ModifyRule
+              - elasticloadbalancing:RemoveListenerCertificates
+              - elasticloadbalancing:RegisterTargets
+              - elasticloadbalancing:DeregisterTargets
+            Resource: '*'
+          - Sid: ELBTagOnNew
+            Effect: Allow
+            Action:
+              - elasticloadbalancing:AddTags
+            Resource:
+              - 'arn:*:elasticloadbalancing:*:*:targetgroup/*/*'
+              - 'arn:*:elasticloadbalancing:*:*:loadbalancer/net/*/*'
+              - 'arn:*:elasticloadbalancing:*:*:loadbalancer/app/*/*'
+              - 'arn:*:elasticloadbalancing:*:*:listener/*/*/*/*'
+              - 'arn:*:elasticloadbalancing:*:*:listener-rule/*/*/*/*/*'
+            Condition:
+              StringEquals:
+                elasticloadbalancing:CreateAction:
+                  - CreateTargetGroup
+                  - CreateLoadBalancer
+                  - CreateListener
+                  - CreateRule
+                aws:RequestTag/platform: skysql
+          - Sid: ELBTagExisting
+            Effect: Allow
+            Action:
+              - elasticloadbalancing:AddTags
+              - elasticloadbalancing:RemoveTags
+            Resource:
+              - 'arn:*:elasticloadbalancing:*:*:targetgroup/*/*'
+              - 'arn:*:elasticloadbalancing:*:*:loadbalancer/net/*/*'
+              - 'arn:*:elasticloadbalancing:*:*:loadbalancer/app/*/*'
+              - 'arn:*:elasticloadbalancing:*:*:listener/*/*/*/*'
+              - 'arn:*:elasticloadbalancing:*:*:listener-rule/*/*/*/*/*'
+            Condition:
+              StringEquals:
+                aws:ResourceTag/platform: skysql
+          - Sid: EC2Describe
+            Effect: Allow
+            Action:
+              - ec2:DescribeAccountAttributes
+              - ec2:DescribeAddresses
+              - ec2:DescribeAvailabilityZones
+              - ec2:DescribeCoipPools
+              - ec2:DescribeInstances
+              - ec2:DescribeInternetGateways
+              - ec2:DescribeNetworkInterfaces
+              - ec2:DescribeSecurityGroups
+              - ec2:DescribeSubnets
+              - ec2:DescribeTags
+              - ec2:DescribeVpcPeeringConnections
+              - ec2:DescribeVpcs
+              - ec2:GetCoipPoolUsage
+            Resource: '*'
+          - Sid: EC2SecurityGroupMutate
+            Effect: Allow
+            Action:
+              - ec2:AuthorizeSecurityGroupEgress
+              - ec2:AuthorizeSecurityGroupIngress
+              - ec2:DeleteSecurityGroup
+              - ec2:RevokeSecurityGroupEgress
+              - ec2:RevokeSecurityGroupIngress
+            Resource: '*'
+            Condition:
+              StringEquals:
+                ec2:ResourceTag/platform: skysql
+          - Sid: EC2SecurityGroupCreate
+            Effect: Allow
+            Action:
+              - ec2:CreateSecurityGroup
+              - ec2:CreateTags
+            Resource:
+              - 'arn:aws:ec2:*:*:security-group/*'
+              - 'arn:aws:ec2:*:*:vpc/*'
+          - Sid: EC2TagExisting
+            Effect: Allow
+            Action:
+              - ec2:CreateTags
+              - ec2:DeleteTags
+            Resource: '*'
+            Condition:
+              StringEquals:
+                ec2:ResourceTag/platform: skysql
+          - Sid: ServiceLinkedRole
+            Effect: Allow
+            Action:
+              - iam:CreateServiceLinkedRole
+            Resource: '*'
+            Condition:
+              StringEquals:
+                iam:AWSServiceName: elasticloadbalancing.amazonaws.com
+          - Sid: DenyIAMWrite
+            Effect: Deny
+            Action:
+              - iam:AttachGroupPolicy
+              - iam:AttachRolePolicy
+              - iam:AttachUserPolicy
+              - iam:CreatePolicy
+              - iam:CreatePolicyVersion
+              - iam:CreateRole
+              - iam:CreateUser
+              - iam:DeletePolicy
+              - iam:DeletePolicyVersion
+              - iam:DeleteRole
+              - iam:DeleteRolePermissionsBoundary
+              - iam:DeleteRolePolicy
+              - iam:DeleteUser
+              - iam:DetachGroupPolicy
+              - iam:DetachRolePolicy
+              - iam:DetachUserPolicy
+              - iam:PassRole
+              - iam:PutGroupPolicy
+              - iam:PutRolePermissionsBoundary
+              - iam:PutRolePolicy
+              - iam:PutUserPolicy
+              - iam:UpdateAssumeRolePolicy
+            Resource: '*'
+
+  # ---------------------------------------------------------------------------
+  # Permission Boundary: Controller Manager
+  # ---------------------------------------------------------------------------
+  ControllerManagerPermissionBoundary:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: SkySQL-ControllerManager-PermissionBoundary
+      Description: Permission boundary for skysql-controller-manager role
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: EC2Describe
+            Effect: Allow
+            Action:
+              - ec2:DescribeAvailabilityZones
+              - ec2:DescribeInstances
+              - ec2:DescribeSnapshots
+              - ec2:DescribeTags
+              - ec2:DescribeVolumes
+              - ec2:DescribeVolumesModifications
+              - ec2:DescribeVolumeTypes
+              - ec2:DescribeVolumeStatus
+            Resource: '*'
+          - Sid: EC2MutateTagged
+            Effect: Allow
+            Action:
+              - ec2:AttachVolume
+              - ec2:CopySnapshot
+              - ec2:CreateTags
+              - ec2:DeleteSnapshot
+              - ec2:DeleteTags
+              - ec2:DeleteVolume
+              - ec2:DetachVolume
+              - ec2:ModifySnapshotAttribute
+              - ec2:ModifyVolume
+            Resource: '*'
+            Condition:
+              StringEquals:
+                ec2:ResourceTag/platform: skysql
+          - Sid: EC2CreateTagged
+            Effect: Allow
+            Action:
+              - ec2:CreateSnapshot
+              - ec2:CreateTags
+              - ec2:CreateVolume
+            Resource: '*'
+            Condition:
+              StringEquals:
+                aws:RequestTag/platform: skysql
+          - Sid: CreateFromSnapshot
+            Effect: Allow
+            Action:
+              - ec2:CreateVolume
+              - ec2:EnableFastSnapshotRestores
+            Resource: !Sub 'arn:aws:ec2:*:*:snapshot/*'
+            Condition:
+              StringEquals:
+                aws:ResourceTag/platform: skysql
+          - Sid: EBS
+            Effect: Allow
+            Action:
+              - ebs:ListChangedBlocks
+            Resource: '*'
+          - Sid: S3
+            Effect: Allow
+            Action:
+              - s3:AbortMultipartUpload
+              - s3:DeleteObject
+              - s3:DeleteObjectVersion
+              - s3:GetBucketLocation
+              - s3:GetBucketVersioning
+              - s3:GetObject
+              - s3:GetObjectAcl
+              - s3:GetObjectVersion
+              - s3:ListBucket
+              - s3:ListBucketMultipartUploads
+              - s3:ListBucketVersions
+              - s3:ListMultipartUploadParts
+              - s3:PutObject
+              - s3:PutObjectAcl
+            Resource:
+              - arn:aws:s3:::cl-org*
+              - arn:aws:s3:::cl-org*/*
+          - Sid: DenyIAMWrite
+            Effect: Deny
+            Action:
+              - iam:AttachGroupPolicy
+              - iam:AttachRolePolicy
+              - iam:AttachUserPolicy
+              - iam:CreatePolicy
+              - iam:CreatePolicyVersion
+              - iam:CreateRole
+              - iam:CreateUser
+              - iam:DeletePolicy
+              - iam:DeletePolicyVersion
+              - iam:DeleteRole
+              - iam:DeleteRolePermissionsBoundary
+              - iam:DeleteRolePolicy
+              - iam:DeleteUser
+              - iam:DetachGroupPolicy
+              - iam:DetachRolePolicy
+              - iam:DetachUserPolicy
+              - iam:PassRole
+              - iam:PutGroupPolicy
+              - iam:PutRolePermissionsBoundary
+              - iam:PutRolePolicy
+              - iam:PutUserPolicy
+              - iam:UpdateAssumeRolePolicy
+            Resource: '*'
+
+  # ---------------------------------------------------------------------------
+  # Permission Boundary: GAR Credential Controller
+  # ---------------------------------------------------------------------------
+  GarCredentialPermissionBoundary:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: SkySQL-GarCredential-PermissionBoundary
+      Description: Permission boundary for gar-credential-controller role
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: STS
+            Effect: Allow
+            Action:
+              - sts:AssumeRoleWithWebIdentity
+            Resource: '*'
+          - Sid: DenyIAMWrite
+            Effect: Deny
+            Action:
+              - iam:AttachGroupPolicy
+              - iam:AttachRolePolicy
+              - iam:AttachUserPolicy
+              - iam:CreatePolicy
+              - iam:CreatePolicyVersion
+              - iam:CreateRole
+              - iam:CreateUser
+              - iam:DeletePolicy
+              - iam:DeletePolicyVersion
+              - iam:DeleteRole
+              - iam:DeleteRolePermissionsBoundary
+              - iam:DeleteRolePolicy
+              - iam:DeleteUser
+              - iam:DetachGroupPolicy
+              - iam:DetachRolePolicy
+              - iam:DetachUserPolicy
+              - iam:PassRole
+              - iam:PutGroupPolicy
+              - iam:PutRolePermissionsBoundary
+              - iam:PutRolePolicy
+              - iam:PutUserPolicy
+              - iam:UpdateAssumeRolePolicy
+            Resource: '*'
+
+  # ---------------------------------------------------------------------------
+  # Permission Boundary: Backup Admin
+  # ---------------------------------------------------------------------------
+  BackupPermissionBoundary:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: SkySQL-Backup-PermissionBoundary
+      Description: Permission boundary for skysql backup admin role
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: STS
+            Effect: Allow
+            Action:
+              - sts:AssumeRoleWithWebIdentity
+            Resource: '*'
+          - Sid: S3BucketOperations
+            Effect: Allow
+            Action:
+              - s3:ListBucket
+              - s3:GetBucketLocation
+            Resource: arn:aws:s3:::skysql-backup-*
+          - Sid: S3ObjectOperations
+            Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+            Resource: arn:aws:s3:::skysql-backup-*/*
+          - Sid: S3MultipartOperations
+            Effect: Allow
+            Action:
+              - s3:CreateMultipartUpload
+              - s3:UploadPart
+              - s3:CompleteMultipartUpload
+              - s3:AbortMultipartUpload
+              - s3:ListMultipartUploadParts
+            Resource: arn:aws:s3:::skysql-backup-*/*
+          - Sid: DenyIAMWrite
+            Effect: Deny
+            Action:
+              - iam:AttachGroupPolicy
+              - iam:AttachRolePolicy
+              - iam:AttachUserPolicy
+              - iam:CreatePolicy
+              - iam:CreatePolicyVersion
+              - iam:CreateRole
+              - iam:CreateUser
+              - iam:DeletePolicy
+              - iam:DeletePolicyVersion
+              - iam:DeleteRole
+              - iam:DeleteRolePermissionsBoundary
+              - iam:DeleteRolePolicy
+              - iam:DeleteUser
+              - iam:DetachGroupPolicy
+              - iam:DetachRolePolicy
+              - iam:DetachUserPolicy
+              - iam:PassRole
+              - iam:PutGroupPolicy
+              - iam:PutRolePermissionsBoundary
+              - iam:PutRolePolicy
+              - iam:PutUserPolicy
+              - iam:UpdateAssumeRolePolicy
+            Resource: '*'
+
+  # ---------------------------------------------------------------------------
+  # Orchestration Policy: Networking
+  # ---------------------------------------------------------------------------
+  NetworkingPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: SkySQL-Networking-Policy
+      Description: Grants SkySQL access for VPC and networking provisioning
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: Describe
+            Effect: Allow
+            Action:
+              - ec2:DescribeAddresses
+              - ec2:DescribeAddressesAttribute
+              - ec2:DescribeAvailabilityZones
+              - ec2:DescribeImages
+              - ec2:DescribeInstances
+              - ec2:DescribeInternetGateways
+              - ec2:DescribeLaunchTemplates
+              - ec2:DescribeLaunchTemplateVersions
+              - ec2:DescribeNatGateways
+              - ec2:DescribeNetworkInterfaces
+              - ec2:DescribePrefixLists
+              - ec2:DescribeRouteTables
+              - ec2:DescribeSecurityGroupRules
+              - ec2:DescribeSecurityGroups
+              - ec2:DescribeSubnets
+              - ec2:DescribeVpcAttribute
+              - ec2:DescribeVpcEndpoints
+              - ec2:DescribeVpcEndpointServiceConfigurations
+              - ec2:DescribeVpcEndpointServicePermissions
+              - ec2:DescribeVpcEndpointServices
+              - ec2:DescribeVpcs
+              - ec2:DescribeVpcEndpointConnections
+              - cloudwatch:ListMetrics
+              - cloudwatch:GetMetricData
+              - cloudwatch:GetMetricStatistics
+              - kms:ListKeys
+            Resource: '*'
+          - Sid: CreateTaggable
+            Effect: Allow
+            Action:
+              - ec2:AllocateAddress
+              - ec2:CreateInternetGateway
+              - ec2:CreateNetworkInterface
+              - ec2:CreateVpc
+              - ec2:CreateVpcEndpointServiceConfiguration
+            Resource: '*'
+            Condition:
+              StringEquals:
+                aws:RequestTag/platform: skysql
+          - Sid: CreateUnrestricted
+            Effect: Allow
+            Action:
+              - ec2:CreateNatGateway
+              - ec2:CreateRoute
+              - ec2:CreateRouteTable
+              - ec2:CreateSecurityGroup
+              - ec2:CreateSubnet
+              - ec2:CreateVpcEndpoint
+            Resource: '*'
+          - Sid: CreateTagsOnNew
+            Effect: Allow
+            Action:
+              - ec2:CreateTags
+            Resource: '*'
+            Condition:
+              StringEquals:
+                ec2:CreateAction:
+                  - AllocateAddress
+                  - CreateInternetGateway
+                  - CreateNatGateway
+                  - CreateNetworkInterface
+                  - CreateRouteTable
+                  - CreateSecurityGroup
+                  - CreateSubnet
+                  - CreateVpc
+                  - CreateVpcEndpoint
+                  - CreateVpcEndpointServiceConfiguration
+                  - CreateLaunchTemplate
+                  - CreateAutoScalingGroup
+                  - RunInstances
+          - Sid: CreateDeleteTagsOnExisting
+            Effect: Allow
+            Action:
+              - ec2:CreateTags
+              - ec2:DeleteTags
+            Resource: '*'
+            Condition:
+              StringEquals:
+                aws:ResourceTag/platform: skysql
+          - Sid: TagExistingSnapshots
+            Effect: Allow
+            Action:
+              - ec2:CreateTags
+            Resource: !Sub 'arn:aws:ec2:*::snapshot/*'
+            Condition:
+              StringEquals:
+                aws:ResourceTag/platform: skysql
+          - Sid: MutateDeleteTagged
+            Effect: Allow
+            Action:
+              - ec2:AssociateAddress
+              - ec2:AssociateRouteTable
+              - ec2:AttachInternetGateway
+              - ec2:AuthorizeSecurityGroupEgress
+              - ec2:AuthorizeSecurityGroupIngress
+              - ec2:DeleteInternetGateway
+              - ec2:DeleteNatGateway
+              - ec2:DeleteRoute
+              - ec2:DeleteRouteTable
+              - ec2:DeleteSecurityGroup
+              - ec2:DeleteSubnet
+              - ec2:DeleteVpc
+              - ec2:DeleteVpcEndpoints
+              - ec2:DeleteVpcEndpointServiceConfigurations
+              - ec2:DetachInternetGateway
+              - ec2:DisassociateAddress
+              - ec2:DisassociateRouteTable
+              - ec2:ModifySubnetAttribute
+              - ec2:ModifyVpcAttribute
+              - ec2:ModifyVpcEndpoint
+              - ec2:ModifyVpcEndpointServicePermissions
+              - ec2:ReleaseAddress
+              - ec2:RevokeSecurityGroupEgress
+              - ec2:RevokeSecurityGroupIngress
+              - ec2:UpdateSecurityGroupRuleDescriptionsEgress
+              - ec2:UpdateSecurityGroupRuleDescriptionsIngress
+              - ec2:TerminateInstances
+            Resource: '*'
+            Condition:
+              StringEquals:
+                aws:ResourceTag/platform: skysql
+
+  # ---------------------------------------------------------------------------
+  # Orchestration Policy: EKS
+  # ---------------------------------------------------------------------------
+  EKSPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: SkySQL-EKS-Policy
+      Description: Grants SkySQL access for EKS cluster provisioning
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: ListClustersOnly
+            Effect: Allow
+            Action:
+              - eks:ListClusters
+              - eks:DescribeAddonVersions
+            Resource: '*'
+          - Sid: AllEKSActions
+            Effect: Allow
+            Action:
+              - eks:CreateCluster
+              - eks:TagResource
+              - eks:DescribeCluster
+              - eks:CreateAccessEntry
+              - eks:DescribeAccessEntry
+              - eks:AssociateAccessPolicy
+              - eks:DisassociateAccessPolicy
+              - eks:ListAssociatedAccessPolicies
+              - eks:DeleteCluster
+              - eks:UpdateClusterConfig
+              - eks:UpdateClusterVersion
+              - eks:DescribeUpdate
+              - eks:UntagResource
+              - eks:ListTagsForResource
+              - eks:DeleteAccessEntry
+              - eks:UpdateAccessEntry
+              - eks:ListAccessEntries
+              - eks:ListAccessPolicies
+              - eks:CreateAddon
+              - eks:DescribeAddon
+              - eks:UpdateAddon
+              - eks:DeleteAddon
+              - eks:ListAddons
+            Resource:
+              - !Sub 'arn:aws:eks:*:${AWS::AccountId}:cluster/cl-org*'
+              - !Sub 'arn:aws:eks:*:${AWS::AccountId}:access-entry/cl-org*'
+              - !Sub 'arn:aws:eks:*:${AWS::AccountId}:addon/cl-org*'
+
+  # ---------------------------------------------------------------------------
+  # Orchestration Policy: Compute
+  # ---------------------------------------------------------------------------
+  ComputePolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: SkySQL-Compute-Policy
+      Description: Grants SkySQL access for EC2 and autoscaling provisioning
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: Describe
+            Effect: Allow
+            Action:
+              - autoscaling:DescribeAutoScalingGroups
+              - autoscaling:DescribeAutoScalingInstances
+              - autoscaling:DescribeInstanceRefreshes
+              - autoscaling:DescribeLaunchConfigurations
+              - autoscaling:DescribeLifecycleHooks
+              - autoscaling:DescribeLoadBalancerTargetGroups
+              - autoscaling:DescribeLoadBalancers
+              - autoscaling:DescribeNotificationConfigurations
+              - autoscaling:DescribePolicies
+              - autoscaling:DescribeScalingActivities
+              - autoscaling:DescribeScheduledActions
+              - autoscaling:DescribeTags
+              - ec2:DescribeTags
+              - ec2:DescribeLaunchTemplates
+              - ec2:DescribeLaunchTemplateVersions
+              - ec2:GetLaunchTemplateData
+              - ec2:DescribeVolumes
+              - ec2:DescribeInstanceStatus
+            Resource: '*'
+          - Sid: CreateTaggable
+            Effect: Allow
+            Action:
+              - autoscaling:CreateAutoScalingGroup
+              - ec2:CreateLaunchTemplate
+              - ec2:CreateVolume
+            Resource: '*'
+            Condition:
+              StringEquals:
+                aws:RequestTag/platform: skysql
+          - Sid: RunInstances
+            Effect: Allow
+            Action:
+              - ec2:RunInstances
+            Resource: '*'
+          - Sid: MutateDeleteTagged
+            Effect: Allow
+            Action:
+              - autoscaling:AttachInstances
+              - autoscaling:CreateOrUpdateTags
+              - autoscaling:DeleteAutoScalingGroup
+              - autoscaling:DeleteTags
+              - autoscaling:DetachInstances
+              - autoscaling:SetDesiredCapacity
+              - autoscaling:SuspendProcesses
+              - autoscaling:UpdateAutoScalingGroup
+              - ec2:CreateLaunchTemplateVersion
+              - ec2:DeleteLaunchTemplate
+              - ec2:DeleteLaunchTemplateVersions
+              - ec2:DeleteVolume
+              - ec2:DetachVolume
+              - ec2:ModifyLaunchTemplate
+              - ec2:GetConsoleOutput
+            Resource: '*'
+            Condition:
+              StringEquals:
+                aws:ResourceTag/platform: skysql
+          - Sid: SSMParameterRead
+            Effect: Allow
+            Action:
+              - ssm:GetParameter
+            Resource:
+              - arn:aws:ssm:*::parameter/aws/service/eks/optimized-ami/*
+          # Read the BYOA deployment metadata written by this template.
+          - Sid: SSMMetadataRead
+            Effect: Allow
+            Action:
+              - ssm:GetParameter
+              - ssm:GetParameters
+              - ssm:GetParameterHistory
+            Resource:
+              - !Sub
+                - 'arn:aws:ssm:*:${AWS::AccountId}:parameter${Param}'
+                - Param: !FindInMap [TemplateMetadata, ParameterName, Value]
+
+  # ---------------------------------------------------------------------------
+  # Orchestration Policy: IAM (Allow statements)
+  # ---------------------------------------------------------------------------
+  IAMPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    DependsOn:
+      - ClusterRolePermissionBoundary
+      - NodeRolePermissionBoundary
+      - AutoscalerPermissionBoundary
+      - LBControllerPermissionBoundary
+      - ControllerManagerPermissionBoundary
+      - GarCredentialPermissionBoundary
+      - BackupPermissionBoundary
+    Properties:
+      ManagedPolicyName: SkySQL-IAM-Policy
+      Description: Grants SkySQL access for IAM role and policy management
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: IAMReadOnly
+            Effect: Allow
+            Action:
+              - iam:GetInstanceProfile
+              - iam:GetOpenIDConnectProvider
+              - iam:GetPolicy
+              - iam:GetPolicyVersion
+              - iam:GetRole
+              - iam:GetRolePolicy
+              - iam:ListAttachedRolePolicies
+              - iam:ListInstanceProfiles
+              - iam:ListInstanceProfilesForRole
+              - iam:ListInstanceProfileTags
+              - iam:ListOpenIDConnectProviders
+              - iam:ListOpenIDConnectProviderTags
+              - iam:ListPolicies
+              - iam:ListPolicyVersions
+              - iam:ListPolicyTags
+              - iam:ListRolePolicies
+              - iam:ListRoles
+              - iam:ListRoleTags
+            Resource: '*'
+          - Sid: CreateRoleWithBoundary
+            Effect: Allow
+            Action:
+              - iam:CreateRole
+            Resource:
+              - !Sub 'arn:aws:iam::${AWS::AccountId}:role/skysql/*'
+            Condition:
+              StringEquals:
+                iam:PermissionsBoundary:
+                  - !Ref ClusterRolePermissionBoundary
+                  - !Ref NodeRolePermissionBoundary
+                  - !Ref AutoscalerPermissionBoundary
+                  - !Ref LBControllerPermissionBoundary
+                  - !Ref ControllerManagerPermissionBoundary
+                  - !Ref GarCredentialPermissionBoundary
+                  - !Ref BackupPermissionBoundary
+          - Sid: TagRolesWithBoundary
+            Effect: Allow
+            Action:
+              - iam:TagRole
+              - iam:UntagRole
+            Resource:
+              - !Sub 'arn:aws:iam::${AWS::AccountId}:role/skysql/*'
+          - Sid: DeleteRole
+            Effect: Allow
+            Action:
+              - iam:DeleteRole
+            Resource:
+              - !Sub 'arn:aws:iam::${AWS::AccountId}:role/skysql/*'
+          - Sid: UpdateTrustPolicy
+            Effect: Allow
+            Action:
+              - iam:UpdateAssumeRolePolicy
+            Resource:
+              - !Sub 'arn:aws:iam::${AWS::AccountId}:role/skysql/*'
+          - Sid: ManagePolicies
+            Effect: Allow
+            Action:
+              - iam:CreatePolicy
+              - iam:DeletePolicy
+              - iam:CreatePolicyVersion
+              - iam:DeletePolicyVersion
+              - iam:TagPolicy
+              - iam:UntagPolicy
+            Resource:
+              - !Sub 'arn:aws:iam::${AWS::AccountId}:policy/skysql/*'
+          - Sid: AttachDetachPolicies
+            Effect: Allow
+            Action:
+              - iam:AttachRolePolicy
+              - iam:DetachRolePolicy
+            Resource:
+              - !Sub 'arn:aws:iam::${AWS::AccountId}:role/skysql/*'
+          - Sid: InlinePolicies
+            Effect: Allow
+            Action:
+              - iam:PutRolePolicy
+              - iam:DeleteRolePolicy
+            Resource:
+              - !Sub 'arn:aws:iam::${AWS::AccountId}:role/skysql/*'
+          - Sid: ManageInstanceProfiles
+            Effect: Allow
+            Action:
+              - iam:AddRoleToInstanceProfile
+              - iam:CreateInstanceProfile
+              - iam:DeleteInstanceProfile
+              - iam:RemoveRoleFromInstanceProfile
+              - iam:TagInstanceProfile
+              - iam:UntagInstanceProfile
+            Resource:
+              - !Sub 'arn:aws:iam::${AWS::AccountId}:instance-profile/skysql/*'
+          - Sid: PassRole
+            Effect: Allow
+            Action:
+              - iam:PassRole
+            Resource:
+              - !Sub 'arn:aws:iam::${AWS::AccountId}:role/skysql/*'
+          - Sid: OIDCProvider
+            Effect: Allow
+            Action:
+              - iam:CreateOpenIDConnectProvider
+              - iam:DeleteOpenIDConnectProvider
+              - iam:GetOpenIDConnectProvider
+              - iam:TagOpenIDConnectProvider
+              - iam:UntagOpenIDConnectProvider
+            Resource:
+              - !Sub 'arn:aws:iam::${AWS::AccountId}:oidc-provider/oidc.eks.*.amazonaws.com/*'
+          - Sid: ServiceLinkedRole
+            Effect: Allow
+            Action:
+              - iam:CreateServiceLinkedRole
+            Resource: '*'
+            Condition:
+              StringEquals:
+                iam:AWSServiceName:
+                  - autoscaling.amazonaws.com
+                  - elasticloadbalancing.amazonaws.com
+                  - eks.amazonaws.com
+          - Sid: AllowSetApprovedBoundary
+            Effect: Allow
+            Action:
+              - iam:PutRolePermissionsBoundary
+            Resource:
+              - !Sub 'arn:aws:iam::${AWS::AccountId}:role/*'
+            Condition:
+              StringEquals:
+                iam:PermissionsBoundary:
+                  - !Ref ClusterRolePermissionBoundary
+                  - !Ref NodeRolePermissionBoundary
+                  - !Ref AutoscalerPermissionBoundary
+                  - !Ref LBControllerPermissionBoundary
+                  - !Ref ControllerManagerPermissionBoundary
+                  - !Ref GarCredentialPermissionBoundary
+                  - !Ref BackupPermissionBoundary
+
+  # ---------------------------------------------------------------------------
+  # Orchestration Policy: IAM Deny statements (split to stay under 6144-byte
+  # managed policy document limit)
+  # ---------------------------------------------------------------------------
+  IAMDenyPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    DependsOn:
+      - ClusterRolePermissionBoundary
+      - NodeRolePermissionBoundary
+      - AutoscalerPermissionBoundary
+      - LBControllerPermissionBoundary
+      - ControllerManagerPermissionBoundary
+      - GarCredentialPermissionBoundary
+      - BackupPermissionBoundary
+    Properties:
+      ManagedPolicyName: SkySQL-IAM-Deny-Policy
+      Description: >-
+        Deny statements for IAM policy - prevents escalation and modification
+        of permission boundaries and orchestration role.
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenySelfEscalation
+            Effect: Deny
+            Action:
+              - iam:DeletePolicy
+              - iam:CreatePolicyVersion
+              - iam:DeletePolicyVersion
+            Resource:
+              - !Ref ClusterRolePermissionBoundary
+              - !Ref NodeRolePermissionBoundary
+              - !Ref AutoscalerPermissionBoundary
+              - !Ref LBControllerPermissionBoundary
+              - !Ref ControllerManagerPermissionBoundary
+              - !Ref GarCredentialPermissionBoundary
+              - !Ref BackupPermissionBoundary
+          - Sid: DenyOrchestratorModification
+            Effect: Deny
+            Action:
+              - iam:AttachRolePolicy
+              - iam:DeleteRole
+              - iam:DeleteRolePolicy
+              - iam:DetachRolePolicy
+              - iam:PutRolePolicy
+              - iam:UpdateAssumeRolePolicy
+            Resource:
+              - !Sub 'arn:aws:iam::${AWS::AccountId}:role/skysql-orchestration'
+          - Sid: DenyRemoveBoundary
+            Effect: Deny
+            Action:
+              - iam:DeleteRolePermissionsBoundary
+            Resource:
+              - !Sub 'arn:aws:iam::${AWS::AccountId}:role/skysql/*'
+          - Sid: DenyCreateRoleWithoutBoundary
+            Effect: Deny
+            Action:
+              - iam:CreateRole
+            Resource: '*'
+            Condition:
+              ForAllValues:StringNotEquals:
+                iam:PermissionsBoundary:
+                  - !Ref ClusterRolePermissionBoundary
+                  - !Ref NodeRolePermissionBoundary
+                  - !Ref AutoscalerPermissionBoundary
+                  - !Ref LBControllerPermissionBoundary
+                  - !Ref ControllerManagerPermissionBoundary
+                  - !Ref GarCredentialPermissionBoundary
+                  - !Ref BackupPermissionBoundary
+
+  # ---------------------------------------------------------------------------
+  # Orchestration Policy: Storage
+  # ---------------------------------------------------------------------------
+  StoragePolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: SkySQL-Storage-Policy
+      Description: Grants SkySQL access for S3, DynamoDB, and EFS
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: S3BucketManagement
+            Effect: Allow
+            Action:
+              - s3:CreateBucket
+              - s3:DeleteBucket
+              - s3:GetBucket
+              - s3:DeleteBucketPolicy
+              - s3:GetBucketPolicy
+              - s3:PutBucketPolicy
+              - s3:ListBucket
+              - s3:GetBucketLocation
+              - s3:PutBucketPublicAccessBlock
+              - s3:PutBucketVersioning
+              - s3:PutEncryptionConfiguration
+              - s3:PutBucketTagging
+              - s3:PutLifecycleConfiguration
+              - s3:GetBucketAcl
+              - s3:GetBucketCORS
+              - s3:GetBucketLogging
+              - s3:GetBucketObjectLockConfiguration
+              - s3:GetBucketPublicAccessBlock
+              - s3:GetBucketTagging
+              - s3:GetBucketVersioning
+              - s3:GetEncryptionConfiguration
+              - s3:GetLifecycleConfiguration
+              - s3:GetReplicationConfiguration
+            Resource:
+              - arn:aws:s3:::cl-org*
+              - arn:aws:s3:::skysql-backup*
+          - Sid: S3ObjectManagement
+            Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+              - s3:ListBucketMultipartUploads
+              - s3:AbortMultipartUpload
+              - s3:ListMultipartUploadParts
+            Resource:
+              - arn:aws:s3:::cl-org*/*
+              - arn:aws:s3:::skysql-backup*/*
+          - Sid: S3ListBuckets
+            Effect: Allow
+            Action:
+              - s3:ListAllMyBuckets
+            Resource: '*'
+          - Sid: DynamoDB
+            Effect: Allow
+            Action:
+              - dynamodb:DescribeTable
+              - dynamodb:CreateTable
+              - dynamodb:DeleteItem
+              - dynamodb:DeleteTable
+              - dynamodb:GetItem
+              - dynamodb:PutItem
+              - dynamodb:TagResource
+              - dynamodb:UntagResource
+              - dynamodb:ListTagsOfResource
+            Resource:
+              - !Sub 'arn:aws:dynamodb:*:${AWS::AccountId}:table/skysql-terraform-state-lock'
+
+  # ---------------------------------------------------------------------------
+  # Orchestration Policy: Load Balancing
+  # ---------------------------------------------------------------------------
+  LoadBalancerPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: SkySQL-LoadBalancer-Policy
+      Description: Grants SkySQL access for ELB/ALB/NLB provisioning
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: Describe
+            Effect: Allow
+            Action:
+              - elasticloadbalancing:DescribeLoadBalancerAttributes
+              - elasticloadbalancing:DescribeLoadBalancers
+              - elasticloadbalancing:DescribeTags
+              - elasticloadbalancing:DescribeTargetGroupAttributes
+              - elasticloadbalancing:DescribeTargetGroups
+              - elasticloadbalancing:DescribeTargetHealth
+            Resource: '*'
+
+  # ---------------------------------------------------------------------------
+  # Orchestration Policy: Disk Volume (EBS operations)
+  # ---------------------------------------------------------------------------
+  DiskVolumePolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: SkySQL-DiskVolume-Policy
+      Description: Grants SkySQL access for EBS operations
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: EC2Describe
+            Effect: Allow
+            Action:
+              - ec2:DescribeAvailabilityZones
+              - ec2:DescribeInstances
+              - ec2:DescribeSnapshots
+              - ec2:DescribeTags
+              - ec2:DescribeVolumes
+              - ec2:DescribeVolumesModifications
+              - ec2:DescribeVolumeTypes
+              - ec2:DescribeVolumeStatus
+            Resource: '*'
+          - Sid: EC2MutateTagged
+            Effect: Allow
+            Action:
+              - ec2:AttachVolume
+              - ec2:CopySnapshot
+              - ec2:CreateTags
+              - ec2:DeleteSnapshot
+              - ec2:DeleteTags
+              - ec2:DeleteVolume
+              - ec2:DetachVolume
+              - ec2:ModifySnapshotAttribute
+              - ec2:ModifyVolume
+            Resource: '*'
+            Condition:
+              StringEquals:
+                ec2:ResourceTag/platform: skysql
+          - Sid: EC2CreateTagged
+            Effect: Allow
+            Action:
+              - ec2:CreateSnapshot
+              - ec2:CreateTags
+              - ec2:CreateVolume
+            Resource: '*'
+            Condition:
+              StringEquals:
+                aws:RequestTag/platform: skysql
+          - Sid: CreateFromSnapshot
+            Effect: Allow
+            Action:
+              - ec2:CreateVolume
+              - ec2:EnableFastSnapshotRestores
+            Resource: !Sub 'arn:aws:ec2:*:*:snapshot/*'
+            Condition:
+              StringEquals:
+                aws:ResourceTag/platform: skysql
+          - Sid: EBS
+            Effect: Allow
+            Action:
+              - ebs:ListChangedBlocks
+            Resource: '*'
+          - Sid: S3
+            Effect: Allow
+            Action:
+              - s3:AbortMultipartUpload
+              - s3:DeleteObject
+              - s3:DeleteObjectVersion
+              - s3:GetBucketLocation
+              - s3:GetBucketVersioning
+              - s3:GetObject
+              - s3:GetObjectAcl
+              - s3:GetObjectVersion
+              - s3:ListBucket
+              - s3:ListBucketMultipartUploads
+              - s3:ListBucketVersions
+              - s3:ListMultipartUploadParts
+              - s3:PutObject
+              - s3:PutObjectAcl
+            Resource:
+              - arn:aws:s3:::cl-org*
+              - arn:aws:s3:::cl-org*/*
+
+  # ---------------------------------------------------------------------------
+  # IAM Role: skysql-orchestration
+  # ---------------------------------------------------------------------------
+  SkysqlOrchestrationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: skysql-orchestration
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${OrchestrationAccountId}:root'
+      ManagedPolicyArns:
+        - !Ref NetworkingPolicy
+        - !Ref EKSPolicy
+        - !Ref ComputePolicy
+        - !Ref IAMPolicy
+        - !Ref IAMDenyPolicy
+        - !Ref StoragePolicy
+        - !Ref LoadBalancerPolicy
+        - !Ref DiskVolumePolicy
+      Tags:
+        - Key: platform
+          Value: skysql
+        - Key: skysql:metadata-region
+          Value: !Ref AWS::Region
+        - Key: skysql:metadata-parameter
+          Value: !FindInMap [TemplateMetadata, ParameterName, Value]
+        - Key: skysql:deployment-method
+          Value: cloudformation
+        - Key: skysql:stack-name
+          Value: !Ref AWS::StackName
+        - Key: skysql:stack-id
+          Value: !Ref AWS::StackId
+
+  # ---------------------------------------------------------------------------
+  # SSM Parameter: BYOA deployment metadata
+  #
+  # Written LAST. DependsOn names every other resource in this template, so the
+  # parameter can only exist once all of them have been created successfully.
+  # On a failed create the stack rolls back and the parameter never appears; on
+  # a failed update it is never rewritten.
+  #
+  # ---------------------------------------------------------------------------
+  ByoaMetadataParameter:
+    Type: AWS::SSM::Parameter
+    DependsOn:
+      - ClusterRolePermissionBoundary
+      - NodeRolePermissionBoundary
+      - AutoscalerPermissionBoundary
+      - LBControllerPermissionBoundary
+      - ControllerManagerPermissionBoundary
+      - GarCredentialPermissionBoundary
+      - BackupPermissionBoundary
+      - NetworkingPolicy
+      - EKSPolicy
+      - ComputePolicy
+      - IAMPolicy
+      - IAMDenyPolicy
+      - StoragePolicy
+      - LoadBalancerPolicy
+      - DiskVolumePolicy
+      - SkysqlOrchestrationRole
+    Properties:
+      Name: !FindInMap [TemplateMetadata, ParameterName, Value]
+      Type: String
+      Tier: Standard
+      Description: SkySQL BYOA deployment metadata (written last, on success only)
+      # AWS::SSM::Parameter takes Tags as a map.
+      Tags:
+        platform: skysql
+      Value: !Sub
+        - |-
+          {"template_version":"${Version}",
+           "deployment_method":"cloudformation",
+           "org_id":"${OrgId}",
+           "orchestration_account_id":"${OrchestrationAccountId}",
+           "account_id":"${AWS::AccountId}",
+           "region":"${AWS::Region}",
+           "orchestration_role_arn":"${RoleArn}",
+           "stack_id":"${AWS::StackId}"}
+        - Version: !FindInMap [TemplateMetadata, Version, Value]
+          RoleArn: !GetAtt SkysqlOrchestrationRole.Arn
+
+# =============================================================================
+# Outputs
+# =============================================================================
+
+Outputs:
+  OrchestrationRoleArn:
+    Description: ARN of the skysql-orchestration role
+    Value: !GetAtt SkysqlOrchestrationRole.Arn
+  AccountId:
+    Description: AWS Account ID where the role was created
+    Value: !Ref AWS::AccountId
+  MetadataParameterName:
+    Description: SSM parameter holding BYOA deployment metadata
+    Value: !Ref ByoaMetadataParameter
+  MetadataRegion:
+    Description: Region the metadata parameter was written to
+    Value: !Ref AWS::Region

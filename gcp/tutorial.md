@@ -50,10 +50,15 @@ next step requires:
 
 ```bash
 gcloud config set project <walkthrough-project-id/>
+export GOOGLE_OAUTH_ACCESS_TOKEN=$(gcloud auth print-access-token)
 gcloud services list --enabled \
   --filter="config.name=(serviceusage.googleapis.com OR cloudresourcemanager.googleapis.com OR storage.googleapis.com)" \
   --format="value(config.name)"
 ```
+
+The `GOOGLE_OAUTH_ACCESS_TOKEN` line is a workaround for buggy
+authentication behavior in Cloud Console. Terraform picks the token up from
+the environment. If you open a new Cloud Shell session, run that line again.
 
 If all three (`serviceusage`, `cloudresourcemanager`, `storage`) are listed,
 skip ahead — nothing left to do here. Otherwise, click below to enable
@@ -142,7 +147,7 @@ Creates a Cloud Storage bucket in your own project, with object versioning turne
 
 ```bash
 gcloud storage buckets create "gs://${TF_VAR_state_bucket}" \
-  --location="us-central-1" \
+  --location="us-central1" \
   --uniform-bucket-level-access \
   --public-access-prevention
 

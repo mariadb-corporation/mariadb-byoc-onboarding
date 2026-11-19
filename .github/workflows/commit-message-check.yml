@@ -1,0 +1,60 @@
+name: Commit Message Check
+
+# The squash-merge commit that lands on the target branch must start with a
+# Jira key: ^(MCDEV|SRE)-\d{1,6}\b, e.g. "MCDEV-1234 Fix bug". Only squash merges
+# are allowed, so GitHub uses the PR title as the commit message, or the commit
+# message itself when the PR has a single commit; both are checked.
+# Exempt: PRs opened by bots if such exists.
+# Add the "Commit message check" status as a required check on protected
+# branches so a non-compliant PR cannot be merged.
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.run_attempt == 1 }}
+
+jobs:
+  check:
+    name: Commit message check
+    runs-on: ubuntu-24.04
+    if: github.event.pull_request.user.type != 'Bot'
+    steps:
+      - name: Validate PR title and single-commit message
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const isValid = (msg) =>
+              /^(MCDEV|SRE)-\d{1,6}\b/.test(msg) || /^Revert "(MCDEV|SRE)-\d{1,6}\b/.test(msg);
+
+            const pr = context.payload.pull_request;
+            const errors = [];
+
+            if (!isValid(pr.title)) {
+              errors.push(`PR title: "${pr.title}"`);
+            }
+
+            if (pr.commits === 1) {
+              const [c] = await github.paginate(github.rest.pulls.listCommits, {
+                ...context.repo, pull_number: pr.number,
+              });
+              const subject = c.commit.message.split('\n')[0];
+              if (!isValid(subject)) {
+                errors.push(`Offending commit: ${c.sha.slice(0, 10)} "${subject}"`);
+              }
+            }
+
+            if (errors.length > 0) {
+              core.setFailed(
+                'Commit rejected: commit message must start with a valid ticket reference ' +
+                '(MCDEV-<number> or SRE-<number>), e.g. "MCDEV-1234 Fix bug".\n' +
+                errors.join('\n'));
+            } else {
+              console.log('PR title and squash commit message comply.');
+            }
